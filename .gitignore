@@ -48,9 +48,8 @@ logs/
 .dockerignore
 
 # Model checkpoints - large files (excluded from repository)
-ISM_Server/checkpoints/FastSAM/
-ISM_Server/checkpoints/dinov2/
-ISM_Server/checkpoints/segment-anything/
+ISM_Server/checkpoints/
+PEM_Server/checkpoints/
 
 # Test data
 test/
