@@ -1,0 +1,17 @@
+# 정말 필요한 것만
+fastapi
+uvicorn[standard]
+
+# SAM-6D 의존성
+torch
+torchvision
+omegaconf
+hydra-core
+pytorch-lightning==1.8.1
+opencv-python
+numpy
+pillow
+trimesh
+scipy
+distinctipy
+imageio

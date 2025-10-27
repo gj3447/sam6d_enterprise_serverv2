@@ -1,0 +1,25 @@
+# FastAPI 서버
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0.0
+python-multipart>=0.0.6
+
+# 머신러닝/딥러닝
+torch>=2.0.0
+torchvision>=0.15.0
+numpy>=1.24.0
+opencv-python>=4.8.0
+Pillow>=10.0.0
+trimesh>=3.23.0
+pycocotools>=2.0.7
+
+# 기타 유틸리티
+requests>=2.31.0
+python-dotenv>=1.0.0
+
+# PyTorch Geometric (PointNet2 관련)
+torch-geometric>=2.4.0
+torch-scatter>=2.1.0
+torch-sparse>=0.6.17
+torch-cluster>=1.6.1
+torch-spline-conv>=1.2.1

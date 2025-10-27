@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  sam6d-server:
+    image: ai_server-server:latest
+    container_name: sam6d-server
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - ./SAM-6D:/workspace/SAM-6D
+      - ./data:/workspace/data
+      - ./outputs:/workspace/outputs
+    ports:
+      - "8000:8000"
+    working_dir: /workspace/SAM-6D/SAM-6D
+    command: conda run -n sam6d bash
+    stdin_open: true
+    tty: true
+
+  sam6d-api:
+    image: ai_server-server:latest
+    container_name: sam6d-api
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - ./SAM-6D:/workspace/SAM-6D
+      - ./data:/workspace/data
+      - ./outputs:/workspace/outputs
+    ports:
+      - "8001:8001"
+    working_dir: /workspace/SAM-6D/SAM-6D
+    command: conda run -n sam6d python /workspace/api_server.py
+    depends_on:
+      - sam6d-server

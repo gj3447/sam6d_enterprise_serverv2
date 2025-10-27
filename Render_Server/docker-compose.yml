@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  render-server:
+    build: .
+    container_name: render-server
+    environment:
+      - RENDER_SERVER_HOST=0.0.0.0
+      - RENDER_SERVER_PORT=8004
+      - RENDER_LOG_LEVEL=INFO
+      - BLENDER_PROC_SAMPLES=50
+      - DISPLAY=:99
+    volumes:
+      # Estimation_Server 전체 마운트 (상위 디렉토리 전체)
+      - ..:/workspace/Estimation_Server
+    ports:
+      - "8004:8004"
+    working_dir: /workspace/Estimation_Server
+    # 서버 자동 시작 (uvicorn)
+    command: bash -c "source /opt/conda/bin/activate sam6d && cd /workspace/Estimation_Server && uvicorn Render_Server.main:app --host 0.0.0.0 --port 8004 --reload"

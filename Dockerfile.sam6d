@@ -1,0 +1,17 @@
+# SAM-6D Container using existing ai_server-server image
+FROM ai_server-server:latest
+
+# Set working directory
+WORKDIR /workspace/SAM-6D/SAM-6D
+
+# Copy SAM-6D project (if not already mounted)
+COPY SAM-6D/ /workspace/SAM-6D/
+
+# Create output directories
+RUN mkdir -p /workspace/SAM-6D/SAM-6D/Data/Example/outputs
+
+# Set default command
+CMD ["conda", "run", "-n", "sam6d", "bash"]
+
+# Expose port for API server
+EXPOSE 8000

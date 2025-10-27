@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  ism-server:
+    build: .
+    container_name: ism-server
+    runtime: nvidia
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - ISM_MODEL_TYPE=sam
+      - ISM_STABILITY_THRESHOLD=0.97
+      - ISM_TEMPLATE_DIR=/workspace/Estimation_Server/SAM-6D/SAM-6D/Data/Example/outputs/templates
+      - ISM_CAD_MODEL_PATH=/workspace/Estimation_Server/SAM-6D/SAM-6D/Data/Example/obj_000005.ply
+      - ISM_CONFIG_DIR=/workspace/Estimation_Server/SAM-6D/SAM-6D/Instance_Segmentation_Model/configs
+      - ISM_CHECKPOINTS_DIR=/workspace/Estimation_Server/SAM-6D/SAM-6D/Instance_Segmentation_Model/checkpoints
+      - ISM_SERVER_HOST=0.0.0.0
+      - ISM_SERVER_PORT=8002
+      - ISM_LOG_LEVEL=INFO
+    volumes:
+      # Estimation_Server 전체 마운트 (상위 디렉토리 전체)
+      - ..:/workspace/Estimation_Server
+    ports:
+      - "8002:8002"
+    working_dir: /workspace/Estimation_Server
+    # 서버 자동 시작
+    command: bash -c "source /opt/conda/bin/activate sam6d && cd /workspace/Estimation_Server/ISM_Server && python main.py"
