@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Docker
+.dockerignore
+
+# Model checkpoints - large files (excluded from repository)
+ISM_Server/checkpoints/FastSAM/
+ISM_Server/checkpoints/dinov2/
+ISM_Server/checkpoints/segment-anything/
+
+# Test data
+test/
+test_basic/
+Render_Server/test/
+Render_Server/test_basic/
+
+# Static data
+static/meshes/
+static/output/
+static/templates/
+
+# Documentation that should not be tracked
+SAM-6D/
+git/
