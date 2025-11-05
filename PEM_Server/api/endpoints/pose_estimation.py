@@ -144,14 +144,38 @@ async def estimate_pose(request: PoseEstimationRequest):
                 detail=f"Template directory not found: {request.template_dir}"
             )
         
-        # 원본 파일 직접 사용 (run_inference_custom_function.py 방식)
-        # Base64 인코딩/디코딩 없이 경로만 파라미터로 받아서 직접 로딩
-        rgb_path = "/workspace/Estimation_Server/SAM-6D/SAM-6D/Data/Example/rgb.png"
-        depth_path = "/workspace/Estimation_Server/SAM-6D/SAM-6D/Data/Example/depth.png"
-        cam_path = "/workspace/Estimation_Server/SAM-6D/SAM-6D/Data/Example/camera.json"
-        seg_path = "/workspace/Estimation_Server/SAM-6D/SAM-6D/Data/Example/outputs/sam6d_results/detection_ism.json"
-        temp_dir = None
-        logger.info("Using original files directly (like run_inference_custom_function.py)")
+        # Base64 이미지를 디코딩하여 임시 파일로 저장
+        temp_dir = tempfile.mkdtemp(prefix="pem_")
+        logger.info(f"Created temporary directory: {temp_dir}")
+        
+        # RGB 이미지 디코딩 및 저장
+        rgb_array = decode_base64_image(request.rgb_image)
+        rgb_path = os.path.join(temp_dir, "rgb.png")
+        Image.fromarray(rgb_array).save(rgb_path)
+        
+        # Depth 이미지 디코딩 및 저장
+        depth_array = decode_base64_image(request.depth_image)
+        depth_path = os.path.join(temp_dir, "depth.png")
+        Image.fromarray(depth_array).save(depth_path)
+        
+        # 카메라 파라미터 저장
+        cam_path = os.path.join(temp_dir, "camera.json")
+        with open(cam_path, 'w') as f:
+            json.dump(request.cam_params, f)
+        
+        # 세그멘테이션 데이터 필터링 (상위 5개만 선택)
+        seg_data = request.seg_data
+        if isinstance(seg_data, list) and len(seg_data) > 5:
+            # score 기준으로 정렬하여 상위 5개만 선택
+            seg_data = sorted(seg_data, key=lambda x: x.get('score', 0), reverse=True)[:5]
+            logger.info(f"Filtered detections: {len(request.seg_data)} -> {len(seg_data)}")
+        
+        # 세그멘테이션 데이터 저장
+        seg_path = os.path.join(temp_dir, "detection_ism.json")
+        with open(seg_path, 'w') as f:
+            json.dump(seg_data, f)
+        
+        logger.info("Decoded and saved images from base64 to temporary files")
         
         # 출력 디렉토리 설정
         output_dir = request.output_dir or temp_dir
@@ -162,23 +186,14 @@ async def estimate_pose(request: PoseEstimationRequest):
         
         # run_inference_custom_function의 함수들 import
         from run_inference_custom_function import (
-            load_templates_from_files, 
             load_test_data_from_files, 
             run_pose_estimation_core
         )
-        
-        # 템플릿 로딩
-        logger.info("Loading templates from files")
-        all_tem, all_tem_pts, all_tem_choose = load_templates_from_files(
-            request.template_dir, model_manager.cfg.test_dataset, model_manager.device
+
+        logger.info("Fetching templates (with caching)")
+        all_tem, all_tem_pts, all_tem_choose, all_tem_feat = model_manager.get_template_bundle(
+            request.template_dir
         )
-        
-        # 템플릿 특징 추출
-        logger.info("Extracting template features")
-        with torch.no_grad():
-            all_tem_pts, all_tem_feat = model_manager.model.feature_extraction.get_obj_feats(
-                all_tem, all_tem_pts, all_tem_choose
-            )
         
         # 테스트 데이터 로딩 (임계값 제거)
         logger.info("Loading test data from files")
@@ -186,6 +201,11 @@ async def estimate_pose(request: PoseEstimationRequest):
             rgb_path, depth_path, cam_path, request.cad_path, seg_path, 
             0.0, model_manager.cfg.test_dataset, model_manager.device  # 임계값을 0.0으로 설정
         )
+
+        # CAD 포인트는 캐시된 값을 사용
+        cad_points = model_manager.get_cad_points(request.cad_path)
+        model_points = cad_points
+        input_data['model_points'] = cad_points
         
         # 추가 데이터 저장 (파일 저장용)
         input_data['whole_image'] = whole_image

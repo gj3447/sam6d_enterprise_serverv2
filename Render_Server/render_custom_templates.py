@@ -10,9 +10,36 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--cad_path', help="The path of CAD model")
 parser.add_argument('--output_dir', help="The path to save CAD templates")
 parser.add_argument('--normalize', default=True, help="Whether to normalize CAD model or not")
-parser.add_argument('--colorize', default=False, help="Whether to colorize CAD model or not")
+parser.add_argument('--colorize', action='store_true', help="Whether to colorize CAD model or not")
 parser.add_argument('--base_color', default=0.05, help="The base color used in CAD model")
 args = parser.parse_args()
+
+# --- Start of fix ---
+import pathlib
+import sys
+
+cad_path_arg = pathlib.Path(args.cad_path)
+
+# If a known 3D model extension is passed, do nothing.
+if cad_path_arg.suffix.lower() in ['.obj', '.ply', '.stl']:
+    pass
+else:
+    # If any other extension (like .png) or no extension is passed, find the correct model file.
+    base_name = cad_path_arg.stem
+    found_model = False
+    for ext in ['.obj', '.ply', '.stl']:
+        # Look for the model file in the same directory as the provided path
+        model_path = cad_path_arg.parent / f"{base_name}{ext}"
+        if model_path.exists():
+            args.cad_path = str(model_path)
+            found_model = True
+            print(f"INFO: CAD path automatically corrected to: {args.cad_path}", file=sys.stderr)
+            break
+    if not found_model:
+        print(f"ERROR: Could not find a corresponding model file (.obj, .ply, .stl) for the base name '{base_name}' in {cad_path_arg.parent}", file=sys.stderr)
+        sys.exit(1)
+# --- End of fix ---
+
 
 # set the cnos camera path
 cnos_cam_fpath = "/workspace/Estimation_Server/SAM-6D/SAM-6D/Instance_Segmentation_Model/utils/poses/predefined_poses/cam_poses_level0.npy"
@@ -34,7 +61,7 @@ def get_norm_info(mesh_path):
 
 
 # load cnos camera pose
-cam_poses = np.load(cnos_cam_fpath)
+cam_poses = np.load(cnos_cam_fpath, allow_pickle=True)
 
 # calculating the scale of CAD model
 if args.normalize:
@@ -53,7 +80,7 @@ for idx, cam_pose in enumerate(cam_poses):
 
     # assigning material colors to untextured objects
     if args.colorize:
-        color = [args.base_color, args.base_color, args.base_color, 0.]
+        color = [float(args.base_color), float(args.base_color), float(args.base_color), 0.0]
         material = bproc.material.create('obj')
         material.set_principled_shader_value('Base Color', color)
         obj.set_material(0, material)
@@ -78,7 +105,7 @@ for idx, cam_pose in enumerate(cam_poses):
     data.update(bproc.renderer.render_nocs())
     
     # check save folder
-    save_fpath = os.path.join(args.output_dir)
+    save_fpath = args.output_dir
     if not os.path.exists(save_fpath):
         os.makedirs(save_fpath)
 

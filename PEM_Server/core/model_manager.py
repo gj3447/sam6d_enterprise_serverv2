@@ -6,10 +6,14 @@ import os
 import sys
 import time
 import torch
-from typing import Optional, Dict, Any
 import logging
+from typing import Optional, Dict, Any, Tuple
+from threading import Lock
+
+import trimesh
 
 from .config import get_settings
+from .cache import LRUCache
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +28,9 @@ class ModelManager:
         self.loaded = False
         self.loading_time = None
         self.parameters = None
+        self.cache_lock = Lock()
+        self.template_cache = LRUCache(self.settings.template_cache_capacity)
+        self.cad_cache = LRUCache(self.settings.cad_cache_capacity)
         
         # 경로 설정
         self._setup_paths()
@@ -198,6 +205,122 @@ class ModelManager:
         except Exception as e:
             logger.error(f"Prediction failed: {e}")
             raise
+
+    # ------------------------------------------------------------------
+    # 캐시 유틸리티
+    # ------------------------------------------------------------------
+    def get_template_bundle(self, template_dir: str) -> Tuple[Any, Any, Any, Any]:
+        """템플릿 관련 데이터를 캐시에서 가져오거나 새로 로드"""
+        if not self.loaded:
+            raise RuntimeError("Model must be loaded before accessing templates")
+
+        template_dir = os.path.abspath(template_dir)
+
+        with self.cache_lock:
+            cached = self.template_cache.get(template_dir)
+        if cached is not None:
+            return cached
+
+        from run_inference_custom_function import load_templates_from_files
+
+        all_tem, all_tem_pts, all_tem_choose = load_templates_from_files(
+            template_dir, self.cfg.test_dataset, self.device
+        )
+
+        with torch.no_grad():
+            all_tem_pts, all_tem_feat = self.model.feature_extraction.get_obj_feats(
+                all_tem, all_tem_pts, all_tem_choose
+            )
+
+        bundle = (all_tem, all_tem_pts, all_tem_choose, all_tem_feat)
+        with self.cache_lock:
+            self.template_cache.put(template_dir, bundle)
+
+        return bundle
+
+    def get_cad_points(self, cad_path: str) -> Any:
+        """CAD 모델 포인트를 캐시에서 가져오거나 새로 로드"""
+        cad_path = os.path.abspath(cad_path)
+
+        with self.cache_lock:
+            cached = self.cad_cache.get(cad_path)
+        if cached is not None:
+            return cached
+
+        mesh = trimesh.load_mesh(cad_path)
+        cad_points = mesh.sample(2048).astype("float32") / 1000.0
+
+        with self.cache_lock:
+            self.cad_cache.put(cad_path, cad_points)
+
+        return cad_points
+
+    def preload_assets(self):
+        """템플릿과 CAD 자산을 미리 로드"""
+        templates_root = os.path.join(self.settings.workspace_root, "static", "templates")
+        meshes_root = os.path.join(self.settings.workspace_root, "static", "meshes")
+
+        if not os.path.exists(templates_root):
+            logger.warning(f"Templates root not found, skipping preload: {templates_root}")
+            return
+
+        logger.info(
+            "Preloading PEM assets (templates & CAD). Capacity: %s templates, %s CAD",
+            self.template_cache.capacity,
+            self.cad_cache.capacity,
+        )
+
+        for class_name in sorted(os.listdir(templates_root)):
+            if class_name.lower() != "ycb":
+                continue
+            class_template_dir = os.path.join(templates_root, class_name)
+            class_mesh_dir = os.path.join(meshes_root, class_name)
+
+            if not os.path.isdir(class_template_dir) or not os.path.isdir(class_mesh_dir):
+                continue
+
+            for object_name in sorted(os.listdir(class_template_dir)):
+                template_dir = os.path.join(class_template_dir, object_name)
+                if not os.path.isdir(template_dir):
+                    continue
+
+                cad_path = None
+                for ext in (".ply", ".obj", ".stl"):
+                    candidate = os.path.join(class_mesh_dir, f"{object_name}{ext}")
+                    if os.path.exists(candidate):
+                        cad_path = candidate
+                        break
+
+                if cad_path is None:
+                    continue
+
+                try:
+                    self.get_template_bundle(template_dir)
+                    self.get_cad_points(cad_path)
+                except Exception as exc:  # pragma: no cover - defensive
+                    logger.warning("Failed to preload %s/%s: %s", class_name, object_name, exc)
+
+                with self.cache_lock:
+                    template_full = len(self.template_cache) >= self.template_cache.capacity
+                    cad_full = len(self.cad_cache) >= self.cad_cache.capacity
+                if template_full and cad_full:
+                    logger.info("Reached cache capacity during preload")
+                    logger.info(
+                        "Preload finished: template_cache=%s/%s, cad_cache=%s/%s",
+                        len(self.template_cache),
+                        self.template_cache.capacity,
+                        len(self.cad_cache),
+                        self.cad_cache.capacity,
+                    )
+                    return
+
+        logger.info(
+            "Preload finished: template_cache=%s/%s, cad_cache=%s/%s",
+            len(self.template_cache),
+            self.template_cache.capacity,
+            len(self.cad_cache),
+            self.cad_cache.capacity,
+        )
 
 # 전역 모델 매니저 인스턴스
 model_manager = ModelManager()

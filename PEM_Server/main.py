@@ -42,6 +42,13 @@ async def lifespan(app: FastAPI):
         success = model_manager.load_model()
         if success:
             logger.info("✅ Model loaded successfully on startup")
+            if settings.preload_templates:
+                logger.info(
+                    "Preloading templates and CAD assets (capacity: template=%s, cad=%s)",
+                    settings.template_cache_capacity,
+                    settings.cad_cache_capacity,
+                )
+                model_manager.preload_assets()
         else:
             logger.error("❌ Failed to load model on startup")
     except Exception as e:

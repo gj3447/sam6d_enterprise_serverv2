@@ -34,6 +34,11 @@ class Settings(BaseModel):
     log_level: str = "INFO"
     log_format: str = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
+    # 캐시 및 프리로드 설정
+    template_cache_capacity: int = int(os.getenv("PEM_TEMPLATE_CACHE_MAX", 20))
+    cad_cache_capacity: int = int(os.getenv("PEM_CAD_CACHE_MAX", 20))
+    preload_templates: bool = os.getenv("PEM_PRELOAD_TEMPLATES", "false").lower() == "true"
+
 # 전역 설정 인스턴스
 settings = Settings()
 

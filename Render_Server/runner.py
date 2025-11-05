@@ -53,9 +53,9 @@ def _run_job(job_id: str, cad_path: str, output_dir: str, colorize: bool, base_c
             "--output_dir", output_dir,
             "--base_color", str(base_color),
         ]
-        # colorize는 스크립트가 문자열 truthy를 사용하므로 True일 때만 전달
+        # colorize는 action='store_true'이므로 True일 때만 플래그 추가
         if colorize:
-            cmd += ["--colorize", "True"]
+            cmd += ["--colorize"]
 
         JOBS[job_id].update({
             "status": "running",

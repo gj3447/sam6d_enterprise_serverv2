@@ -32,7 +32,7 @@ def read_template_poses(is_opengl_camera, dense=False):
         path += "3.npy"
     else:
         path += "2.npy"
-    template_poses = np.load(path)
+    template_poses = np.load(path, allow_pickle=True)
     if is_opengl_camera:
         for id_frame in range(len(template_poses)):
             template_poses[id_frame] = opencv2opengl(template_poses[id_frame])
@@ -75,12 +75,12 @@ def get_obj_poses_from_template_level(
         obj_poses_path = os.path.join(
             root_project, f"utils/poses/predefined_poses/cam_poses_level{level}.npy"
         )
-        obj_poses = np.load(obj_poses_path)
+        obj_poses = np.load(obj_poses_path, allow_pickle=True)
     else:
         obj_poses_path = os.path.join(
             root_project, f"utils/poses/predefined_poses/obj_poses_level{level}.npy"
         )
-        obj_poses = np.load(obj_poses_path)
+        obj_poses = np.load(obj_poses_path, allow_pickle=True)
 
     if pose_distribution == "all":
         if return_index:
@@ -92,7 +92,7 @@ def get_obj_poses_from_template_level(
         cam_poses_path = os.path.join(
             root_project, f"utils/poses/predefined_poses/cam_poses_level{level}.npy"
         )
-        cam_poses = np.load(cam_poses_path)
+        cam_poses = np.load(cam_poses_path, allow_pickle=True)
         if return_index:
             index = np.arange(len(obj_poses))[cam_poses[:, 2, 3] >= 0]
             return index, obj_poses[cam_poses[:, 2, 3] >= 0]
@@ -107,7 +107,7 @@ def load_index_level_in_level2(level, pose_distribution):
         root_repo,
         f"utils/poses/predefined_poses/idx_{pose_distribution}_level{level}_in_level2.npy",
     )
-    return np.load(index_path)
+    return np.load(index_path, allow_pickle=True)
 
 
 def load_mapping_id_templates_to_idx_pose_distribution(level, pose_distribution):

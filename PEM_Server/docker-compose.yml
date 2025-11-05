@@ -22,6 +22,17 @@ services:
       - PEM_SERVER_HOST=0.0.0.0
       - PEM_SERVER_PORT=8003
       - PEM_LOG_LEVEL=INFO
+      - PEM_PRELOAD_TEMPLATES=true
+      - PEM_TEMPLATE_CACHE_MAX=20
+      - PEM_CAD_CACHE_MAX=20
+      # SAM6D_SAVE_PEM_DETECTIONS
+      #   false: detection_pem.json 저장 안 함 (기본)
+      #   true : detection_pem.json 저장
+      - SAM6D_SAVE_PEM_DETECTIONS=false
+      # SAM6D_SAVE_PEM_VISUALIZATION
+      #   false: vis_pem.png 저장 안 함
+      #   true : 시각화 이미지 저장 (기본)
+      - SAM6D_SAVE_PEM_VISUALIZATION=true
     volumes:
       # Estimation_Server 전체 마운트 (상위 디렉토리 전체)
       - ..:/workspace/Estimation_Server

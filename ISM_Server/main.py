@@ -35,6 +35,21 @@ templates_boxes = None
 cad_points = None
 device = None
 
+# --- Start of Caching Implementation ---
+from threading import Lock
+from lru_cache import LRUCache
+
+# 스레드 안전성을 위한 Lock 객체
+CACHE_LOCK = Lock()
+
+# 최대 캐시 크기 설정 (환경 변수에서 읽어오기, 기본값 20)
+MAX_CACHE_SIZE = int(os.getenv("ISM_MAX_CACHE_SIZE", 20))
+
+# 템플릿과 CAD 모델을 위한 LRU 캐시
+TEMPLATE_CACHE = LRUCache(capacity=MAX_CACHE_SIZE)
+CAD_CACHE = LRUCache(capacity=MAX_CACHE_SIZE)
+# --- End of Caching Implementation ---
+
 # 로깅 설정
 def setup_logging():
     """로깅 설정"""
@@ -239,13 +254,88 @@ async def lifespan(app: FastAPI):
     logger.info("Starting ISM Server...")
     write_to_log_file("Starting ISM Server...")
     
-    # 모델만 로딩 (템플릿과 CAD는 클라이언트가 제공)
+    # 모델 로딩
     model_loaded = await load_model()
     if not model_loaded:
         logger.error("Model loading failed")
         yield
         return
+
+    # --- Start of Pre-loading Logic ---
+    # 환경 변수에서 PRELOAD_ALL_TEMPLATES 값을 읽어옴
+    # 이 값을 true로 설정하면 서버 시작 시 모든 템플릿을 미리 로드합니다.
+    should_preload = os.getenv("ISM_PRELOAD_TEMPLATES", "false").lower() == "true"
     
+    if should_preload:
+        logger.info(f"PRELOAD_ALL_TEMPLATES is true. Starting pre-loading of all templates and CAD models up to a capacity of {MAX_CACHE_SIZE}...")
+        
+        # ../static/templates 와 ../static/meshes 경로 설정
+        project_root = os.path.abspath(os.path.join(current_dir, '..'))
+        templates_base_dir = os.path.join(project_root, 'static', 'templates')
+        meshes_base_dir = os.path.join(project_root, 'static', 'meshes')
+        
+        if not os.path.exists(templates_base_dir):
+            logger.warning(f"Templates base directory not found, skipping preload: {templates_base_dir}")
+        else:
+            # 클래스 디렉토리 순회 (e.g., ycb)
+            for class_name in os.listdir(templates_base_dir):
+                if class_name.lower() != "ycb":
+                    continue
+                if len(TEMPLATE_CACHE) >= MAX_CACHE_SIZE:
+                    break
+                class_template_dir = os.path.join(templates_base_dir, class_name)
+                class_mesh_dir = os.path.join(meshes_base_dir, class_name)
+                
+                if not os.path.isdir(class_template_dir) or not os.path.exists(class_mesh_dir):
+                    continue
+
+                # 객체 디렉토리 순회
+                for object_name in os.listdir(class_template_dir):
+                    if len(TEMPLATE_CACHE) >= MAX_CACHE_SIZE:
+                        logger.info(f"Cache is full (capacity: {MAX_CACHE_SIZE}). Stopping pre-loading.")
+                        break
+
+                    template_dir = os.path.join(class_template_dir, object_name)
+                    if not os.path.isdir(template_dir):
+                        continue
+
+                    logger.info(f"Pre-loading data for object: {class_name}/{object_name}")
+                    
+                    # Find corresponding CAD model
+                    cad_path = None
+                    for ext in ['.ply', '.obj', '.stl']:
+                        potential_cad_path = os.path.join(class_mesh_dir, f"{object_name}{ext}")
+                        if os.path.exists(potential_cad_path):
+                            cad_path = potential_cad_path
+                            break
+                    
+                    if not cad_path:
+                        logger.warning(f"Could not find CAD model for {object_name}, skipping.")
+                        continue
+
+                    # Load and cache data
+                    try:
+                        with CACHE_LOCK:
+                            if template_dir not in TEMPLATE_CACHE:
+                                t_data, t_masks, t_boxes = load_templates_from_files(template_dir, device)
+                                TEMPLATE_CACHE.put(template_dir, (t_data, t_masks, t_boxes))
+                                logger.info(f"Successfully cached templates for {template_dir}")
+
+                            if cad_path not in CAD_CACHE:
+                                mesh = trimesh.load_mesh(cad_path)
+                                c_points = mesh.sample(2048).astype(np.float32) / 1000.0
+                                CAD_CACHE.put(cad_path, c_points)
+                                logger.info(f"Successfully cached CAD model for {cad_path}")
+                    except Exception as e:
+                        logger.error(f"Failed to preload data for {object_name}: {e}")
+                if len(TEMPLATE_CACHE) >= MAX_CACHE_SIZE:
+                    break
+        
+        logger.info(f"Finished pre-loading data. Cache size: {len(TEMPLATE_CACHE)}/{MAX_CACHE_SIZE}")
+    else:
+        logger.info("PRELOAD_ALL_TEMPLATES is false. Templates will be cached on-demand.")
+    # --- End of Pre-loading Logic ---
+
     logger.info("Model loaded successfully! Ready to accept inference requests.")
     write_to_log_file("Model loaded successfully! Ready to accept inference requests.")
     
@@ -286,8 +376,12 @@ async def get_status():
 def base64_to_image(base64_string):
     """Base64 문자열을 PIL Image로 변환"""
     try:
+        import io
         image_data = base64.b64decode(base64_string)
+        logger.info(f"Decoded image data (first 10 bytes): {image_data[:10]}")
         image = Image.open(io.BytesIO(image_data))
+        # BytesIO 객체를 닫아서 메모리 해제
+        # (Image.open은 BytesIO를 자동으로 close하지 않으므로)
         return image
     except Exception as e:
         raise ValueError(f"Invalid base64 image: {e}")
@@ -365,13 +459,30 @@ async def inference(request: InferenceRequest):
         logger.info(f"Loading CAD model from: {cad_path}")
         
         try:
-            # 템플릿 로딩
-            client_templates_data, client_templates_masks, client_templates_boxes = load_templates_from_files(template_dir, device)
-            
-            # CAD 모델 로딩
-            mesh = trimesh.load_mesh(cad_path)
-            client_cad_points = mesh.sample(2048).astype(np.float32) / 1000.0
-            
+            with CACHE_LOCK:
+                # --- Template Caching ---
+                cached_templates = TEMPLATE_CACHE.get(template_dir)
+                if cached_templates:
+                    logger.info("Found templates in cache.")
+                    client_templates_data, client_templates_masks, client_templates_boxes = cached_templates
+                else:
+                    logger.info("Templates not in cache, loading from files...")
+                    client_templates_data, client_templates_masks, client_templates_boxes = load_templates_from_files(template_dir, device)
+                    TEMPLATE_CACHE.put(template_dir, (client_templates_data, client_templates_masks, client_templates_boxes))
+                    logger.info(f"Cached templates for: {template_dir}")
+
+                # --- CAD Model Caching ---
+                cached_cad = CAD_CACHE.get(cad_path)
+                if cached_cad is not None:
+                    logger.info("Found CAD model in cache.")
+                    client_cad_points = cached_cad
+                else:
+                    logger.info("CAD model not in cache, loading from file...")
+                    mesh = trimesh.load_mesh(cad_path)
+                    client_cad_points = mesh.sample(2048).astype(np.float32) / 1000.0
+                    CAD_CACHE.put(cad_path, client_cad_points)
+                    logger.info(f"Cached CAD model for: {cad_path}")
+
             logger.info(f"Loaded {len(client_templates_data)} templates and CAD model with {client_cad_points.shape[0]} points")
             
         except Exception as load_error:
@@ -404,19 +515,52 @@ async def inference(request: InferenceRequest):
             
             # 결과 처리
             detections = result.get("detections", [])
+            conversion_start = time.time()
+            
             if hasattr(detections, 'to_dict'):
                 detections = detections.to_dict()
             elif hasattr(detections, 'masks'):
                 # Detections 객체를 딕셔너리로 변환
+                # 마스크는 COCO RLE 형식으로 변환하거나, 파일 경로만 전달하는 것이 효율적
+                num_objects = len(detections.masks) if hasattr(detections.masks, '__len__') else 0
+                logger.info(f"Converting {num_objects} detections to response format...")
+                
+                # 마스크는 이미지 파일로 저장되어 있으므로, 큰 배열 변환을 피함
+                # COCO RLE 형식이나 파일 경로만 전달하는 것이 좋지만,
+                # 호환성을 위해 최소한의 변환만 수행
+                try:
+                    # 마스크가 COCO RLE 형식인지 확인
+                    if isinstance(detections.masks, list) and len(detections.masks) > 0:
+                        # 이미 리스트 형식이거나 COCO RLE 형식인 경우
+                        masks_data = detections.masks
+                    elif hasattr(detections.masks, 'tolist'):
+                        # 큰 배열인 경우 - 상위 10개만 전송하거나 RLE 변환 고려
+                        if num_objects > 10:
+                            logger.warning(f"Too many detections ({num_objects}). Converting top 10 only.")
+                            masks_data = detections.masks[:10].tolist() if hasattr(detections.masks, '__getitem__') else detections.masks.tolist()[:10]
+                        else:
+                            masks_data = detections.masks.tolist()
+                    else:
+                        masks_data = detections.masks
+                except Exception as mask_err:
+                    logger.warning(f"Mask conversion error: {mask_err}. Using original format.")
+                    masks_data = detections.masks
+                
+                # 상위 10개만 전송 (점수 순으로 정렬된 경우)
+                max_objects = min(10, num_objects)
                 detections = {
-                    "masks": detections.masks.tolist() if hasattr(detections.masks, 'tolist') else detections.masks,
-                    "boxes": detections.boxes.tolist() if hasattr(detections.boxes, 'tolist') else detections.boxes,
-                    "scores": detections.scores.tolist() if hasattr(detections.scores, 'tolist') else detections.scores,
-                    "object_ids": detections.object_ids.tolist() if hasattr(detections.object_ids, 'tolist') else detections.object_ids
+                    "masks": masks_data[:max_objects] if isinstance(masks_data, list) and len(masks_data) > max_objects else masks_data,
+                    "boxes": (detections.boxes[:max_objects].tolist() if hasattr(detections.boxes, '__getitem__') else detections.boxes.tolist()[:max_objects]) if hasattr(detections.boxes, 'tolist') else (detections.boxes[:max_objects] if hasattr(detections.boxes, '__getitem__') else detections.boxes),
+                    "scores": (detections.scores[:max_objects].tolist() if hasattr(detections.scores, '__getitem__') else detections.scores.tolist()[:max_objects]) if hasattr(detections.scores, 'tolist') else (detections.scores[:max_objects] if hasattr(detections.scores, '__getitem__') else detections.scores),
+                    "object_ids": (detections.object_ids[:max_objects].tolist() if hasattr(detections.object_ids, '__getitem__') else detections.object_ids.tolist()[:max_objects]) if hasattr(detections.object_ids, 'tolist') else (detections.object_ids[:max_objects] if hasattr(detections.object_ids, '__getitem__') else detections.object_ids)
                 }
+                logger.info(f"Sending top {max_objects} detections (out of {num_objects} total)")
             
+            conversion_time = time.time() - conversion_start
             logger.info(f"SAM-6D inference completed successfully")
             logger.info(f"Detected {len(detections.get('masks', []))} objects")
+            if conversion_time > 1.0:
+                logger.warning(f"Data conversion took {conversion_time:.2f}s (consider optimizing mask format)")
             
         except Exception as inference_error:
             logger.error(f"SAM-6D inference failed: {inference_error}")

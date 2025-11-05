@@ -1,0 +1,18 @@
+ISM 서버 테스트 실행 방법
+=====================
+
+CMD 터미널에서 실행:
+
+cd C:\CD\PROJECT\BINPICKING\Estimation_Server\Main_Server
+python run_ism_test.py
+
+그러면 output 디렉토리에:
+- detection_ism.json
+- detection_ism.npz
+- vis_ism.png (이미지!)
+
+파일들이 생성됩니다.
+
+확인:
+dir static\output /s
+

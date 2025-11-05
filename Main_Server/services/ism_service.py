@@ -83,7 +83,7 @@ def test_ism_server(
     depth_b64 = encode_image_base64(depth_path)
     
     # 카메라 파라미터 로드
-    with open(cam_json_path, "r", encoding="utf-8") as f:
+    with open(cam_json_path, "r", encoding="utf-8-sig") as f:
         cam_params = json.load(f)
     
     # ISM 서버 요청 데이터 구성
