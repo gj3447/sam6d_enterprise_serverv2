@@ -39,6 +39,9 @@ Thumbs.db
 # Logs
 *.log
 logs/
+**/log/
+Render_Server/logs/
+ISM_Server/log copy/
 
 # Temporary files
 *.tmp
@@ -56,12 +59,37 @@ test/
 test_basic/
 Render_Server/test/
 Render_Server/test_basic/
+Render_Server/test_function/
 
 # Static data
 static/meshes/
 static/output/
 static/templates/
+static/test/
+
+# Test output and results
+RSSServer_connector/output/
+pose_results_api.json
+rss_batch_summary.json
+abnormal_objects.txt
+
+# Temporary/cache folders
+ISM_Server/None/
+
+# Archive and backup (optional - remove if you want to keep history)
+Main_Server/archive/
+static/meshes/ycb_backup/
+
+# Korean documentation (personal notes)
+개선사항_요약.md
+입력값_비교_분석.md
+추론_프로세스_분석.md
+output_구조_확인.md
+*최종_테스트_결과*.md
 
 # Documentation that should not be tracked
 SAM-6D/
 git/
+
+# Reports (optional - remove if needed for documentation)
+reports/
