@@ -76,20 +76,47 @@ abnormal_objects.txt
 # Temporary/cache folders
 ISM_Server/None/
 
-# Archive and backup (optional - remove if you want to keep history)
-Main_Server/archive/
+# Backup folders
 static/meshes/ycb_backup/
-
-# Korean documentation (personal notes)
-개선사항_요약.md
-입력값_비교_분석.md
-추론_프로세스_분석.md
-output_구조_확인.md
-*최종_테스트_결과*.md
 
 # Documentation that should not be tracked
 SAM-6D/
 git/
 
-# Reports (optional - remove if needed for documentation)
+# Environment configuration files (may contain sensitive info)
+*.env
+!.env.example
+Main_Server/config.env
+Main_Server/config_dev.env
+Main_Server/config_prod.env
+
+# Archive folders (old tests and docs)
+Main_Server/archive/
+
+# Reports folder
 reports/
+
+# Personal memo markdown files (Korean)
+개선사항_요약.md
+입력값_비교_분석.md
+추론_프로세스_분석.md
+output_구조_확인.md
+Main_Server/Main*.md
+Main*.md
+
+# Additional log folders
+ISM_Server/log/sam/
+
+# Binary/large data files
+*.bin
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Editor backup files
+*~
+*.bak
+
+# Windows system files
+desktop.ini
+ehthumbs.db
